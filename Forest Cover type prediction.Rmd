@@ -1,0 +1,437 @@
+---
+title: "Forest Cover Type Prediction"
+output:
+  pdf_document:
+    fig_caption: yes
+  word_document: default
+  html_document: default
+date: "December 20, 2017"
+subtitle: Ankush Agrawal, Apurv Garg, Sreekanth Krishnaiah, Subhankar Ghosh
+---
+
+```{r setting-chunk-options, include=FALSE}
+knitr::opts_chunk$set(fig.align = "center", eval = FALSE, echo = FALSE, comment=FALSE, warning=FALSE, results='hide', out.width = "500px" )
+```
+
+\begin{center}
+\textbf{Abstract} 
+
+Understanding forest composition is a valuable aspect of managing the health and vitality of our wilderness areas. Classifying cover type can help further research regarding forest fire susceptibility, the spread of the Mountain Pine Beetle infestion, and de/reforestation concerns. In this project we predict forest cover type using cartographic data obtained by US Geological Survey (USGS) and US Forest Service (USFS). We have found that Random Forest predicts forest cover with 84.64\% accuracy.
+
+\end{center}
+
+
+## Introduction
+
+What is forest cover? to do
+For any private, state, or federal land management agency it is essential to have proper data about our wilderness areas. Forest cover type is one of the most important information seeked by these agencies due to myriad applications and research studies.  Classifying cover type can help further research regarding forest fire susceptibility, the spread of the Mountain Pine Beetle infestion, and de/reforestation concerns. Generally, such kind of data are directly recorded by field personnel and/or estimated from remotely sensed data. Both of the above mentioned techniques are time consuming and resource intensive. Predictive models are an alternative efficient technique to get such kind of data.
+
+The study area includes four wilderness areas located in the Roosevelt National Forest of northern Colorado. Each observation is a 30m x 30m patch of forest land. We aim to predict the forest cover type. The seven types are:
+
+ 1. Spruce/Fir
+ 2. Lodgepole Pine
+ 3. Ponderosa Pine
+ 4. Cottonwood/Willow
+ 5. Aspen
+ 6. Douglas-fir
+ 7. Krummholz
+
+
+\begin{figure}[!htb]
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/1.jpg}
+  \caption{Spruce/Fir}\label{fig:Spruce}
+\endminipage\hfill
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/2.jpg}
+  \caption{Lodgepole Pine}\label{fig:Lodgepole}
+\endminipage\hfill
+\minipage{0.32\textwidth}%
+  \includegraphics[width=\linewidth]{img/3.jpg}
+  \caption{Ponderosa Pine}\label{fig:Ponderosa}
+\endminipage
+\end{figure}
+
+\begin{figure}[!htb]
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/4.jpg}
+  \caption{Cottonwood/Willow}\label{fig:Cottonwood}
+\endminipage\hfill
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/5.jpg}
+  \caption{Aspen}\label{fig:Aspen}
+\endminipage\hfill
+\minipage{0.32\textwidth}%
+  \includegraphics[width=\linewidth]{img/7.jpg}
+  \caption{Krummholz}\label{fig:Krummholz}
+\endminipage
+\end{figure}
+
+\begin{figure}[!htb]
+\minipage{0.32\textwidth}%
+  \includegraphics[width=\linewidth]{img/6.jpg}
+  \caption{Douglas-fir}\label{fig:Douglas}
+\endminipage
+\end{figure}
+
+
+
+We have collected this dataset from [Kaggle Forest Cover Type Prediction](https://www.kaggle.com/c/forest-cover-type-prediction) which contains 15120 observations.
+
+
+The actual forest cover type for a given observation (30 x 30 meter cell) was determined from US Forest Service (USFS) Region 2 Resource Information System (RIS) data. Independent variables were derived from data originally obtained from US Geological Survey (USGS) and USFS data. Data is in raw form (not scaled) and contains binary (0 or 1) columns of data for qualitative independent variables (wilderness areas and soil types)
+
+
+The predictors we are using give us information about 
+
+ 1. Elevation of the region in meters 
+ 2. Aspect in degrees, slope of the region in degrees 
+ 3. Horizontal distance to nearest surface water features 
+ 4. Vertical Distance to nearest surface water features 
+ 5. Horizontal Distance to nearest roadway 
+ 6. Hillshade index at 9 AM 
+ 7. Hillshade index at noon 
+ 8. Hillshade index at 3 PM
+ 9. Horizontal distance to nearest wildfire ignition points
+ 10. Wilderness of the area assigned (Rawah Wilderness Area, Neota Wilderness Area, Comanche Peak Wilderness Area, Cache la Poudre Wilderness Area)
+ 11. Type of soil
+
+We will be performing a multi-class classification task on forest cover type from this dataset. The response variable in the dataset is *Cover_Type*. In this study we will examine the ability of models like Random Forest, K-Nearest Neighbour, Elastic-Net and Extreme Gradient Boosting to predict cover type classes.
+
+
+## Materials and Models
+
+
+
+
+
+```{r load-packages, include=FALSE}
+library(grid)
+library(gridExtra)
+library(caret)
+library(randomForest)
+library(xgboost)
+library(car)
+```
+
+We have collected this dataset from [Kaggle Forest Cover Type Prediction](https://www.kaggle.com/c/forest-cover-type-prediction) which consists of the following features:
+
+* Elevation - Elevation of the region in meters
+* Aspect - Aspect in degrees azimuth
+* Slope - Slope of the region in degrees
+* Horizontal_Distance_To_Hydrology - Horizontal Distance to nearest surface water features
+* Vertical_Distance_To_Hydrology - Vertical Distance to nearest surface water features
+* Horizontal_Distance_To_Roadways - Horizontal Distance to nearest roadway
+* Hillshade_at_9am (0 to 255 index) - Hillshade index at 9am, summer solstice
+* Hillshade_at_Noon (0 to 255 index) - Hillshade index at noon, summer solstice
+* Hillshade_at_3pm (0 to 255 index) - Hillshade index at 3pm, summer solstice
+* Horizontal_Distance_To_Fire_Points - Horizontal Distance to nearest wildfire ignition points
+* Wilderness_Area (4 binary columns, 0 = absence or 1 = presence) - Wilderness area designation
+* Soil_Type (40 binary columns, 0 = absence or 1 = presence) - Soil Type designation
+* Cover_Type (7 types, integers 1 to 7) - Forest Cover Type designation
+
+### Preprocessing
+
+We first loaded the data in R
+
+```{r load-data}
+forest_data = read.csv("data\\train.csv", header = TRUE)
+```
+
+We randomly split the data into train-test datasets, with 70% data as trainset and 30% as testset
+
+```{r data-split}
+set.seed(42)
+
+train_index = createDataPartition(forest_data$Cover_Type, p = 0.70, list = FALSE)
+train_data = forest_data[train_index, ]
+test_data = forest_data[-train_index, ]
+```
+
+
+We checked for **missing values** in the training set. There was no missing values found so we do not implement an imputation method.
+
+```{r missing-value-check}
+sum(is.na(train_data))
+```
+
+
+We noticed that the columns **soil_type_7 and soil_type_15** contain only 0 values so we removed them from both testset and trainset. 
+
+```{r delete-columns}
+train_data$Soil_Type15 = NULL
+train_data$Soil_Type7 = NULL
+
+test_data$Soil_Type15 = NULL
+test_data$Soil_Type7 = NULL
+```
+
+We converted the below mentioned columns from integers to factors since they are binary variables.
+* Wilderness_Area (4 binary columns, 0 = absence or 1 = presence) - Wilderness area designation
+  - Wilderness_Area1 (0 = absence or 1 = presence)
+  - Wilderness_Area2 (0 = absence or 1 = presence)
+  - Wilderness_Area3 (0 = absence or 1 = presence)
+  - Wilderness_Area4 (0 = absence or 1 = presence)
+* Soil_Type (40 binary columns, 0 = absence or 1 = presence) - Soil Type designation
+
+Now once our preprocessing is done we move towards model fitting.
+
+### Evaluation Metric 
+
+We will use misclassification rate as our metric for evaluating the models.
+
+```{r define-error-metric}
+error = function(actual, predicted) {
+  mean(actual != predicted)
+}
+```
+
+```{r define-error-arrays}
+test_errors = rep(x = 0, 6)
+train_errors = rep(x = 0, 6)
+```
+
+
+### Model Fitting
+
+**Random Forest centred and scaled**
+
+```{r rf-preprocess, echo=TRUE}
+set.seed(1337)
+rf_grid = expand.grid(mtry = c(21))
+rf_with_preprocessing = train(form = Cover_Type ~. , data = train_data,
+                     method = "rf",
+                     trControl = trainControl(method = "oob"),
+                     preProcess = c("center", "scale"),
+                     tuneGrid = rf_grid)
+```
+
+Our best model had an mtry value of 21. We found the train and test errors and stored them for comparison later.
+
+```{r rf-error}
+train_errors[1] = error(actual= train_data$Cover_Type, predicted = predict(rf_with_preprocessing, train_data))
+test_errors[1] = error(actual= test_data$Cover_Type, predicted = predict(rf_with_preprocessing, test_data))
+```
+
+```{r var-importance}
+g = varImp(rf_with_preprocessing, scale = FALSE)
+```
+
+```{r best-tune}
+rf_with_preprocessing$bestTune
+```
+
+
+
+**Random Forest without centering and scaling**
+
+
+```{r rf, echo=TRUE}
+set.seed(1337)
+
+rf_without_preprocess = train(form = Cover_Type ~. , data = train_data,
+                     method = "rf",
+                     trControl = trainControl(method = "oob"),
+                     tuneGrid = rf_grid)
+```
+
+
+We found the train and test errors and stored them for comparison later.
+
+```{r rf-error2}
+train_errors[2] = error(actual= train_data$Cover_Type, predicted = predict(rf_without_preprocess, train_data))
+test_errors[2] = error(actual= test_data$Cover_Type, predicted = predict(rf_without_preprocess, test_data))
+```
+
+**Elastic net**
+
+```{r elastic-net, echo=TRUE}
+set.seed(1337)
+train_model_en = train(form = Cover_Type ~. , data = train_data,
+                 method = "glmnet",
+                 trControl = trainControl(method = "cv", number = 5),
+                 tuneLength = 10)
+```
+
+
+
+We found the train and test errors and stored them for comparison later.
+
+```{r elastic-net-error}
+train_errors[3] = error(actual= train_data$Cover_Type, predicted = predict(train_model_en, train_data))
+test_errors[3] = error(actual= test_data$Cover_Type, predicted = predict(train_model_en, test_data))
+```
+
+
+**KNN without pre scaling**
+
+```{r knn-withoutscaling, echo=TRUE}
+train_model_knn = train(form = Cover_Type ~. , data = train_data, 
+                    method = "knn", 
+                    trControl = trainControl(method = "cv", number = 5))
+```
+
+
+
+We found the train and test errors and stored them for comparison later.
+
+```{r knn-withoutscaling-error}
+train_errors[4] = error(actual= train_data$Cover_Type, predicted = predict(train_model_knn, train_data))
+test_errors[4] = error(actual= test_data$Cover_Type, predicted = predict(train_model_knn, test_data))
+```
+
+
+**KNN with pre scaling**
+
+```{r knn-scaling, echo=TRUE}
+train_model_knn_2 = train(form = Cover_Type ~. , data = train_data, 
+                    method = "knn", 
+                    trControl = trainControl(method = "cv", number = 5),
+                    preProcess = c("center", "scale"))
+```
+
+
+We found the train and test errors and stored them for comparison later.
+
+```{r knn-withscaling-error}
+train_errors[5] = error(actual= train_data$Cover_Type, predicted = predict(train_model_knn_2, train_data))
+test_errors[5] = error(actual= test_data$Cover_Type, predicted = predict(train_model_knn_2, test_data))
+```
+
+
+**Extreme Gradient Boosting**
+
+```{r data-for-xgboost}
+set.seed(1337)
+sparse_matrix <- Matrix::sparse.model.matrix(Cover_Type~.-1, data = train_data)
+sparse_matrix_tst <- Matrix::sparse.model.matrix(Cover_Type~.-1, data = test_data)
+
+train_data$Cover_Type <- as.numeric(train_data$Cover_Type)
+numberOfClasses <- length(unique(train_data$Cover_Type))
+class(train_data$Cover_Type)
+train_data$Cover_Type1 <- train_data$Cover_Type-1
+```
+
+
+```{r xgboost}
+xgb2 <- xgboost(data = sparse_matrix, 
+                train_data$Cover_Type1,
+                eta = 0.004,
+                max_depth = 7, 
+                nround=10000, 
+                subsample = 0.7,
+                colsample_bytree = 0.5,
+                set.seed = 80,
+                objective = "multi:softprob",
+                num_class = numberOfClasses,
+                nfold=5,
+                eval_metric = "mlogloss",
+                missing=NaN)
+```
+
+
+We found the train and test errors and stored them for comparison later.
+
+```{r xgb-training-error}
+predicted_train <- predict(xgb2,sparse_matrix)
+x <- predicted_train
+res1 <- cbind.data.frame(split(x, rep(1:7, times=length(x)/7)), stringsAsFactors=F)
+res1[, "max"] <- apply(res1, 1, max)
+res1[, "max_cat"] <- apply(res1, 1, which.max)
+xgb_train_error = error(train_data$Cover_Type,res1$max_cat)
+```
+
+
+
+```{r xgb-testerror}
+predicted_tst <- predict(xgb2,sparse_matrix_tst)
+x <- predicted_tst
+res <- cbind.data.frame(split(x, rep(1:7, times=length(x)/7)), stringsAsFactors=F)
+res[, "max"] <- apply(res, 1, max)
+res[, "max_cat"] <- apply(res, 1, which.max)
+xgb_test_error = error(test_data$Cover_Type,res$max_cat)
+```
+
+```{r xgb-error}
+train_errors[5] = xgb_train_error
+test_errors[5] = xgb_test_error
+```
+
+
+```{r}
+final_table = data.frame(Model = c('Random Forest prescale', 'Random Forest', 'Elastic Net', 'KNN', 'KNN pre-scale', 'XGBoost' ),
+                       TrainRMSE = c(train_errors), TestRMSE = c(test_errors) )
+```
+
+
+## Results
+
+The variable importance we obtained from random forest that we had trained.
+
+\begin{figure}[!htb]
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/varimp.png}
+  \caption{Vatiable importance}\label{fig:comp}
+\endminipage
+\end{figure}
+
+```{r var-imp, fig.align="center", fig.width=7, fig.height=7, fig.cap="Variable Importance plot"}
+plot(g, cex.names=0.5)
+```
+
+
+
+```{r ggplot-comparison}
+p = ggplot(final_table, aes(x = Model, group = 1)) +
+  geom_line(aes(y = train_error, colour = "Train error")) +
+  geom_point(data = final_table, aes(Model, train_error)) +
+  geom_line(aes(y = test_error, colour = "Test error")) +
+  geom_point(data = final_table, aes(Model, test_error)) +
+  scale_colour_manual(values = c("blue", "red")) +
+  labs(y = "Error", x = "Model", colour = "Error") +
+  ggtitle("Model Vs Train & Test error") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5), panel.border = element_blank(), axis.text.x = element_text(angle = 90),
+        axis.line = element_line())
+```
+
+\begin{figure}[!htb]
+\minipage{0.32\textwidth}
+  \includegraphics[width=\linewidth]{img/comp.png}
+  \caption{Comparative Study between models}\label{fig:comp}
+\endminipage
+\end{figure}
+
+
+```{r plot-comparison, fig.cap="Comparative study between models", fig.height=5, fig.width=7, fig.align="center"}
+plot(p)
+```
+
+The misclassification rate across all the above models are shown in Fig \@ref(fig:plot-comparison). We can say from the figure that Random Forest with preprocessing performs the best among all the models with a test accuracy of 84.60%.
+
+
+```{r tab-comparison, fig.cap="Comparative study between models in tabular form", fig.height=5, fig.width=7, fig.align="center"}
+knitr::kable(final_table, format = "latex", caption = "Comparative study between models in tabular form")
+```
+
+The same result can be seen from Table \@ref(tab:tab-comparison).
+
+
+## Discussion
+
+
+Random Forest without preprocessing works the best as we can see from Table \@ref(tab:tab-comparison) and Figure \@ref(fig:plot-comparison). The results of Random forest with preprocessing and Extreme Gradient Boosting are very close to our best model. Our best model Randome Forest has gives us the best results with 500 trees and 21 as the value of mtry which is approximately $m/3$ where m is the number of predictors we have used. 
+
+
+Our dataset consists of both qualitative and quantitative predictors, and most of them are not normally distributed that is why LDA or QDA was not considered for modelling. It is not possible to fit a particular distribution to the predictors and also it is not possible to find a clear boundary between the classes therefore Generative models were not used. All the models under consideration are Discriminative.
+
+We have tried to fit a parametric Elastic Net model but it gave high misclassification rate compared to the other non-parametric models we used like k-Nearest Neighbour, Random Forest and Extreme Gradient Boosting. Inspite of their high interpretability and high speed the Parametric models fail to give high accuracy due to their limited complexity. The non parametric models although they run the risk of overfitting are capable of giving high accuracy with their high flexibility because they make no assumptions about the underlying data. In our case this is exactly what had happened since the response variable did not have any visible pattern with respect to the predictors so a highly flexible model like Random Forest and XGBoost was expected to perform better.
+
+
+Except the Elevation feature no other features(after/before transformation) showed linear relationship with the response variable so it was expected that a non-linear model would perform better compared to a linear one. This is precisely what we see in the results where non linear models like Random Forest and XGBoost performed much better that the linear Elastic net model.
+
+Due to high dimensionality of the dataset k-Nearest Neighbour performed poorly since k-NN is a spacial model and with increase in the number of dimensions the distance between points increase, also the non significant features contribute the same as the most important features. From Fig \@ref(fig:var-imp) we can see that the 11 most important features are Elevation, Horizontal distance to roadways, Horizontal distance to fire points, Horizontal distance to hydrology, Vertical distance to hydrology, Hillshade at 9AM, Wilderness area 4, Aspect, Hillshade at noon, Hillshade at 3PM and slope so if we can get the above features we can pretty well predict the forest cover even though if we do not know the soil types.
+
+## Conclusion
+
+Understanding forest composition is a valuable aspect of managing the health and vitality of our wilderness areas. Classifying cover type can help further research regarding forest fire susceptibility, the spread of the Mountain Pine Beetle infestion, and de/reforestation concerns. In this project we predict forest cover type using cartographic data obtained by US Geological Survey (USGS) and US Forest Service (USFS). We analyzed the data, inspected for missing value and 0 variation columns. After conversion of categorical columns to factors we compared a number of models like k-Nearest Neighbour, Random Forest and Extreme Gradient boosting and found out that Random Forest performs the best in predicting forest cover type giving us a test accuracy of 84.60%. Our future work would encompass experimenting with other modelling techniques and going into the Artificial Neural Networks and deep-learning to predict forest cover type.
